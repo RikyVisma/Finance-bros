@@ -1,14 +1,59 @@
 import pandas as pd
-df = pd.read_csv("dataset_2022_hash.csv", sep=";", decimal=",")
-print(df.head())
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ---------------- load & target ----------------
+df = pd.read_csv("dataset_2022_hash.csv", sep=";", decimal=",", low_memory=False)
 y = df['abandono_hash'].map({'A': 1, 'B': 0})
-print(df.isna().sum())
+
+# ---------------- missing-value handling ----------------
 df = df.fillna(df.mean(numeric_only=True))
 df = df.fillna("Unknown")
-print(df.isna().sum())
-cols_to_drop = ['abandono_hash', 'dni_hash', 'tit_hash', 'asi_hash', 'baja_fecha', 'fecha_datos']
-X = df.drop(columns=cols_to_drop)
+
+# ---------------- columns to drop ----------------
+# target + ids + leaky/irrelevant fields
+cols_to_drop = [
+    'abandono_hash',   # target
+    'dni_hash',        # student id
+    'tit_hash',        # degree id
+    'asi_hash',        # subject id
+    'baja_fecha',      # dropout date — direct leakage
+    'caca',            # academic year — constant in this file
+    'fecha_datos',     # snapshot date — constant
+    'activ1',          # requested
+]
+X = df.drop(columns=[c for c in cols_to_drop if c in df.columns])
+
+# ---------------- encode categoricals ----------------
 categorical_cols = X.select_dtypes(include=['object']).columns
 for col in categorical_cols:
     X[col] = X[col].astype('category').cat.codes + 1
-print(X.head())
+
+# ---------------- correlation with target ----------------
+corr = X.apply(lambda c: c.corr(y)).dropna()
+corr_sorted = corr.reindex(corr.abs().sort_values(ascending=False).index)
+
+print("\nTop 20 features by |correlation| with dropout:")
+print(corr_sorted.head(20).round(3))
+
+print("\nBottom 10 (lowest absolute correlation):")
+print(corr_sorted.tail(10).round(3))
+
+# ---------------- visualization ----------------
+top = corr_sorted.head(25)
+colors = ['#d9534f' if v > 0 else '#5cb85c' for v in top.values]
+
+fig, ax = plt.subplots(figsize=(9, 9))
+ax.barh(top.index[::-1], top.values[::-1], color=colors[::-1], edgecolor='white')
+ax.axvline(0, color='k', linewidth=0.8)
+ax.set_xlabel("Pearson correlation with dropout (A=1, B=0)")
+ax.set_title("Top 25 features by |correlation| with dropout", fontweight='bold')
+for i, v in enumerate(top.values[::-1]):
+    ax.text(v + (0.005 if v >= 0 else -0.005), i, f"{v:+.2f}",
+            va='center', ha='left' if v >= 0 else 'right', fontsize=8)
+plt.tight_layout()
+plt.savefig("dropout_correlation.png", dpi=130, bbox_inches='tight')
+plt.show()
+
+# also save full ranking to CSV
+corr_sorted.to_csv("dropout_correlation_ranking.csv", header=['corr_with_dropout'])
