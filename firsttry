@@ -1,11 +1,14 @@
 import pandas as pd
 df = pd.read_csv("dataset_2022_hash.csv", sep=";", decimal=",")
 print(df.head())
+y = df['abandono_hash'].map({'A': 1, 'B': 0})
 print(df.isna().sum())
 df = df.fillna(df.mean(numeric_only=True))
 df = df.fillna("Unknown")
 print(df.isna().sum())
-categorical_cols = df.select_dtypes(include=['object']).columns
+cols_to_drop = ['abandono_hash', 'dni_hash', 'tit_hash', 'asi_hash', 'baja_fecha', 'fecha_datos']
+X = df.drop(columns=cols_to_drop)
+categorical_cols = X.select_dtypes(include=['object']).columns
 for col in categorical_cols:
-    df[col] = df[col].astype('category').cat.codes + 1
-print(df.head())
+    X[col] = X[col].astype('category').cat.codes + 1
+print(X.head())
